@@ -1,0 +1,217 @@
+TITLE What a Subgroup Accuracy Gap Measures: Separating Sampling Noise, Annotation Artefacts, and Model Bias in Facial Aesthetic Assessment
+
+AUTHORS Qaim Mehdi Rizvi, Tehzeeb Fatima, and Sana Talat
+
+ABSTRACT Subgroup accuracy audits have become the standard evidence that an automated system treats demographic groups equally, and the standard statistic is the spread between the best- and worst-served group. We show that this statistic is not a property of the model. It contains three separable quantities: sampling noise, which produces a positive expected spread even when every group is served identically; annotation artefacts, which arise because per-group label reliability and label spread differ and both distort correlation-type accuracy; and the residual model-side disparity, which is the only part an audit is actually about. We give estimators for the first two, validate each against a known answer, and apply the decomposition to facial aesthetic assessment on two datasets. On MEBeauty, a reported spread of 0.202 in Pearson correlation across six populations is 51% sampling noise, and nothing survives both corrections. On SCUT-FBP5500, where groups are larger and annotation is uniform, the floor is 28% of the reported spread and an excess of 0.067 survives. That residual is traceable to training representation: equalizing the training mix removes 67% of it for 0.012 of pooled accuracy. The two datasets yield opposite verdicts from superficially similar numbers, which is the point. We argue that an audit reporting an uncorrected gap can both manufacture findings and conceal them, and we set out what a credible subgroup report must disclose.
+
+TERMS Algorithmic auditing, annotation reliability, facial beauty prediction, fairness evaluation, measurement error, subgroup disparity.
+
+#1 Introduction
+
+p Reporting accuracy separately for demographic subgroups is now the normal way to show that an automated system does not work better for some people than for others. The practice was established by audits of commercial face analysis [buolamwini2018], [raji2019] and of face recognition at scale [grother2019]; it is embedded in reporting conventions such as model cards [mitchell2019] and datasheets [gebru2021]; and it is assumed by regulatory instruments that require providers to examine their systems for group-differentiated performance [euaia2024], [nist2023]. In almost every case the headline quantity is the same: a per-group accuracy, and the spread between the highest and the lowest.
+
+p That quantity is read as a property of the model. It is not. A measured spread across groups is a sum of at least three things, only one of which is the model.
+
+p The first is sampling noise. Group accuracies are estimated on finite and usually very unequal samples. The maximum minus the minimum of a set of noisy estimates has a positive expectation even when the underlying quantities are identical, and that expectation grows with the number of groups and with the imbalance between them. An intersectional audit over twelve cells, several of which contain fewer than a hundred faces, is close to the worst case for this statistic.
+
+p The second is the annotation. Accuracy against human-assigned labels is bounded by how reliable those labels are, and reliability is not constant across groups: it depends on how many annotators rated each item and how much they agreed. Where accuracy is measured by correlation, it is also sensitive to how widely the labels are spread within the group. Both effects are well understood in psychometrics [spearman1904], [thorndike1949], [hunter2015] and both are group-specific, so both show up in a subgroup comparison as apparent model behaviour.
+
+p The third is what remains: a difference in how well the model serves different groups that is not explained by the first two. This is what an audit is for.
+
+p The distinction matters because the three have different remedies and different owners. Sampling noise is fixed by collecting more data or by reporting an interval. Annotation artefacts are fixed by the people who commission the labels. Only the residual is a statement about the model, and only the residual tells a developer what to change. An audit that reports the undecomposed spread cannot say which of the three it has found.
+
+p It also cuts both ways, which is the part usually missed. An uncorrected gap can manufacture a finding, by reporting as bias a spread that equal treatment would produce anyway. It can equally conceal one, because a reader who has learned to discount subgroup gaps as noisy will discount a real one. The remedy is not to distrust subgroup audits; it is to report the gap against the floor it should be measured from.
+
+p We develop the decomposition in the setting of facial aesthetic assessment. The choice is deliberate. The label is explicitly an aggregate of human opinion, so annotation quality is measurable rather than assumed; large public datasets record every individual rating; the groups of interest are the ones audits care about; and the applications, which include retouching filters, cosmetic-surgery planning tools, and the ranking of people in dating and recruitment products, are consequential enough that a wrong audit verdict has a cost. The domain is also one where the construct itself is contested, which we address in Section VII rather than set aside.
+
+p Our contributions are as follows.
+
+p *A decomposition* of a reported subgroup accuracy gap into a sampling-noise floor, an annotation-artefact component, and a residual, with an estimator for each (Section III).
+
+p *Known-answer validation* of every estimator. Each correction is run on data where the true value is fixed in advance, and is required to return it (Section III-E). A correction that has not been shown to recover a known answer is an assertion, and the literature on subgroup auditing contains few such demonstrations.
+
+p *A two-dataset application* in which the same pipeline produces opposite verdicts. On MEBeauty, 51% of the reported gap is noise and the remainder does not survive the annotation corrections. On SCUT-FBP5500 the floor is small and a disparity survives everything we can remove (Section V).
+
+p *An attribution of the surviving disparity.* On SCUT it tracks training representation: re-training with an ethnicity-balanced training mix removes 67% of it at a cost of 0.012 in pooled correlation (Section V-E).
+
+p *A reporting standard* for subgroup audits that follows from the above, and a discussion of the one thing correction does not do, which is change what the deployed system does to the people it serves worse (Section VI).
+
+#1 Related Work
+
+#2 Subgroup auditing of face analysis
+
+p Gender Shades [buolamwini2018] established the intersectional subgroup audit as a method and demonstrated its force; the follow-up study of vendor responses [raji2019] showed that published audits change products. NIST’s demographic-effects report [grother2019] extended the approach to face recognition across a large algorithm population. Kotwal and Marcel [kotwal2025] survey demographic fairness in face recognition and note the recurring problem that reported differentials are rarely accompanied by uncertainty. Fairness-specific datasets such as FairFace [karkkainen2021] address the composition of the evaluation set but not the precision of the resulting per-group estimates. Our concern is orthogonal to all of these: given a subgroup evaluation, what does the reported number contain.
+
+#2 Measurement error in fairness evaluation
+
+p Jacobs and Wallach [jacobs2021] argue that fairness claims are measurement claims and inherit the validity problems of the measurement. Fogliato et al. [fogliato2020] show that fairness assessments made against biased noisy labels can invert, and Mitchell et al. [mitchell2021] catalogue how different parity definitions encode different assumptions. The impossibility results [chouldechova2017] show that parity criteria conflict with one another. What this literature establishes is that labels are not ground truth. What it does not supply is a procedure that takes a specific audit, estimates the label-side contribution to the specific number reported, and says how much is left. That is what we provide.
+
+#2 Correcting for unreliability and restricted range
+
+p Correction for attenuation [spearman1904] and Thorndike’s case II correction for range restriction [thorndike1949] are standard in personnel selection and meta-analysis [hunter2015], where they are applied to validity coefficients that are structurally identical to a per-group Pearson correlation between a model score and a human-assigned criterion. They are, to our knowledge, not part of the subgroup-auditing toolkit, and they are not applied in the facial beauty prediction literature, although the field reports Pearson correlation against mean human ratings as its primary metric.
+
+#2 Facial beauty prediction
+
+p The field is surveyed in [laurentini2014] and [liu2016]. Early work used geometric features derived from anthropometric canons [eisenthal2006], [kagian2006], [schmid2008], [zhang2011], including the first author’s earlier study [rizvi2013]; later work replaced them with learned appearance representations [gray2010], [fan2018], [lin2019], [xu2020], [vmbeauty2025], typically trained on SCUT-FBP5500 [liang2018] with label-distribution objectives [geng2013]. MEBeauty [lebedeva2022] was introduced to address the ethnic narrowness of earlier benchmarks and is accompanied by a multi-method benchmark [mebench2026]. Hamel and Busch [hamel2025] report demographic bias in deep beauty regressors and conclude that the models are biased; their analysis compares per-group performance without reference to group size or annotation quality, and is a direct example of the inference this paper examines. The normative canons themselves are contested both empirically [holland2008] and as a theory of attractiveness [langlois1990], [rhodes1999], [rhodes2006], [langlois2000].
+
+#1 What a Subgroup Gap Contains
+
+#2 Setup
+
+p Let a model produce a score for each item, let each item carry a label obtained by averaging the ratings of several annotators, and let items be partitioned into groups indexed by g with sizes n_{g}. Per-group accuracy is the Pearson correlation r_{g} between score and label within the group, which is the primary metric in this domain and the one whose behaviour under measurement error is best characterised. The reported disparity is D = max_{g} r_{g} − min_{g} r_{g}. We decompose D as illustrated in Fig. 1.
+
+@fig fig1_decomposition|3.40|1|A reported subgroup disparity and the three quantities inside it. Only the third is a statement about the model. The first two are properties of the evaluation design and the annotation protocol respectively, and both can be estimated from information an auditor already has.
+
+#2 Source one: the sampling-noise floor
+
+p Each r_{g} is an estimate from n_{g} items, with standard error that grows as n_{g} falls. The maximum minus the minimum of G such estimates is a biased estimator of the true spread: its expectation is positive when the true spread is zero, and it increases with G and with the dispersion of the n_{g}. We estimate the floor directly. For a reference skill level ρ, taken as the mean of the observed per-group correlations, we simulate G groups at the observed sizes in which every group has identical true skill and identical annotation quality, compute max minus min, and repeat. The mean of that distribution is the gap an audit of this design will report when there is nothing to find; its upper tail gives a one-sided test of the observed D against the hypothesis of equal treatment.
+
+@eq F(ρ; n_{1}, …, n_{G}) = E[ max_{g} r̂_{g} − min_{g} r̂_{g} ]|1
+p where each r̂_{g} is drawn as the sample correlation of n_{g} pairs whose population correlation is ρ. The observed D is referred to this distribution, giving both the expected gap under equal treatment and a one-sided p-value.
+p This is not a correction applied to D. It is the null that D must be compared against, and it has to be recomputed whenever the reference skill level changes, because the sampling variance of a correlation depends on its magnitude. In particular, a correction that raises the mean per-group correlation lowers the floor, so a corrected gap must be judged against a correspondingly corrected floor rather than the original one.
+
+#2 Source two: annotation artefacts
+
+p Two distinct effects operate. The first is attenuation. If the label for group g has reliability ρ_{g}, no predictor can correlate with it above √ρ_{g}, and an observed r_{g} understates the correlation with the underlying quantity by that factor. We estimate ρ_{g} from the individual ratings using the variance components of a crossed random-effects decomposition, which gives the reliability of a mean of k_{g} raters by the Spearman–Brown relation; the disattenuated value is r_{g}/√ρ_{g}. Reliability varies across groups whenever the number of annotators per item or the level of agreement varies, and in datasets assembled from convenience pools both do.
+
+@eq r̄_{g} = r_{g} / √ρ_{g}|2
+p The second is range restriction. Pearson correlation falls when the spread of the criterion within a group is narrower than in the pooled sample, even with no change in the underlying relation. With u_{g} the ratio of the pooled label standard deviation to the group’s, Thorndike’s case II correction gives the value that would be observed at the pooled spread. Groups whose faces happen to be rated over a narrow band therefore appear to be served worse, and groups rated over a wide band appear to be served better, purely as an artefact of the sample composition.
+
+@eq r̃_{g} = u_{g} r_{g} / √(1 + r_{g}² (u_{g}² − 1))|3
+p The two corrections act in opposite directions for some groups, so neither can be applied alone without risk of overstating the other. We therefore report the gap after each correction separately and after both.
+
+#2 Source three: the residual
+
+p What remains after the annotation corrections, measured against the recomputed floor, is the model-side disparity. It is the quantity an audit should report, and the only one for which a developer is answerable. In Section V-E we take the analysis one step further and ask what the residual on SCUT-FBP5500 is made of, since a residual that is an artefact of the training mix has an immediate remedy and one that is not does not.
+
+#2 Validating the estimators
+
+p Each estimator is required to recover a value fixed in advance. For attenuation, we generate a predictor whose true correlation with a latent trait is 0.80, observe it against a label of known reliability, and require r/√ρ to return 0.80. For range restriction, we truncate the latent trait to produce groups of known restricted spread and require the Thorndike correction to return 0.80 from each. Results are in Table I. All six recoveries land within 0.002 of the true value at n = 200,000, so the estimators are implemented correctly and any failure to remove a gap in the real data is a statement about the data and not about the arithmetic.
+
+@tbl validation
+
+p The floor estimator is validated by construction: in the simulation every group has identical true skill, so any spread it reports is by definition sampling noise. We draw 4,000 replicates at each design and reference level. Table II gives the floor for the three groupings analysed in this paper. The MEBeauty design, with six groups ranging from 72 to 581 items, produces an expected gap of 0.104 at a reference correlation of 0.70 with nothing whatever to find; the SCUT-FBP5500 design, with four groups from 719 to 1,993, produces 0.032.
+
+@tbl floor
+
+#1 Data, Models and Protocol
+
+#2 Datasets
+
+p *MEBeauty* [lebedeva2022] contains in-the-wild photographs annotated on a 1–10 scale by a pool of raters, with population labels in six categories. After landmark-quality control, 1,479 faces remain; the fusion analyses use the 1,391 for which an appearance embedding was also available. The label is the mean of a median of 26 ratings per face, drawn from 371 annotators and 38,940 individual ratings.
+
+p *SCUT-FBP5500* [liang2018] contains 5,500 frontal photographs, each rated on a 1–5 scale by the same 60 annotators, with labels for Asian and Caucasian and for male and female, giving four subgroups of 719 to 1,993 faces. We retain 5,429 faces, a retention rate of 98.7%, after the same geometric quality control. The dataset’s uniform annotation design is the reason it is informative here: with every face rated by the full panel, per-group reliability is nearly constant, which isolates the other two sources.
+
+p The two datasets differ in exactly the ways that matter for the decomposition. MEBeauty has small, unequal groups and heterogeneous annotation; SCUT-FBP5500 has large, moderately unequal groups and homogeneous annotation. The group labels in both are coarse, externally assigned and, for sex, binary; Section VII addresses what that implies.
+
+#2 Predictors
+
+p We evaluate three predictor families so that the decomposition is not specific to one representation. The *geometry* predictor uses 56 scale-free measurements computed from 30 named anthropometric landmarks: 35 ratios drawn from the neoclassical canons [farkas1985], [farkas1994], golden-ratio constructions, symmetry, and face form, plus 21 signed deviations from the corresponding normative ideal. Landmarks are abstracted to a named semantic layer so the battery is independent of the detector used [kazemi2014], [kartynnik2019]. The *appearance* predictor uses a 512-dimensional face embedding. The *fusion* predictor combines them through cross-attention [vaswani2017] with a label-distribution output head [geng2013], [fan2018]. The geometric battery is of independent interest because its features carry explicit provenance, and Section V-G reports a property of it that bears directly on auditing.
+
+#2 Protocol
+
+p All results are out-of-fold predictions from five-fold cross-validation repeated over three seeds, averaged per item. Per-group correlations are computed on identical items across predictor families, so differences between families are paired. Bootstrap intervals use 5,000 resamples. Permutation tests use 4,000 draws; multiple comparisons within a family use Benjamini–Hochberg control [benjamini1995] and pairwise group comparisons use Holm correction [holm1979]. Group differences in distribution are tested with Kruskal–Wallis [kruskal1952] and reported with ε² and Cliff’s δ [cliff1993].
+
+#2 Exclusions, and what they did to the sample
+
+p Quality control and embedding availability both remove faces, and neither removes them evenly. On MEBeauty, 88 faces were lost to embedding availability, and 86 of those were Indian men: that cell falls from 91 faces to 5, and the Indian sample becomes 93% female. We exclude the cell from gap statistics and report it here rather than in a limitations paragraph, because an exclusion that destroys one intersectional cell is a finding about the evaluation and not a footnote to it. It is also a concrete instance of the paper's argument: an audit that reported a per-cell accuracy for Indian men on five faces would be reporting almost pure noise.
+
+#1 Results
+
+#2 Annotation properties differ sharply between groups
+
+p Table III gives the per-group annotation parameters for both datasets. On MEBeauty the reliability of the mean label ranges from 0.858 to 0.928, so the attenuation ceiling ranges from 0.926 to 0.963, and the label standard-deviation ratio u ranges from 0.82 to 1.20. Both quantities vary systematically: the groups with the fewest raters per face are also, on the whole, the groups whose labels are most tightly clustered. On SCUT-FBP5500 the same parameters are nearly flat, with reliability between 0.982 and 0.987, because every face was rated by the same 60 people; only the spread ratio varies, from 0.96 to 1.13.
+
+@tbl annotation
+
+p The consequence is visible in Fig. 2. On MEBeauty the correction changes the ordering of the groups substantially: the Black subset, which is the worst-served group as measured at r = 0.583, moves to 0.704 and is no longer distinguishable from the middle of the range, while the Middle Eastern subset, which is the best-served as measured, barely moves. On SCUT-FBP5500 the ordering survives: Caucasian men remain last before and after correction.
+
+@wfig fig2_per_group|7.00|2|Per-group accuracy as measured and after both label-side corrections, with each group’s label reliability and spread ratio on the axis. On MEBeauty (a), correction reorders the groups and compresses the range; the group that appears worst served is the group whose labels are least reliable and most widely spread. On SCUT-FBP5500 (b), where annotation is uniform by design, correction shifts the values without reordering them.
+
+#2 Measured against the floor, the two datasets disagree
+
+p Fig. 3 gives the decomposition for three groupings. On MEBeauty, six populations, the reported disparity is 0.202. The sampling-noise floor for that design at the observed reference skill is 0.103, which is 51% of the reported value. The observed gap is nevertheless larger than the floor, and significantly so (p = 0.019), leaving an excess of 0.098 before any annotation correction. After both corrections the gap falls to 0.084, a reduction of 58%; the floor for the corrected skill level is 0.091; and the excess is −0.007. Nothing survives. The same conclusion follows from the spread across groups rather than the extremes: the observed standard deviation of 0.078 is above its own floor as measured (p = 0.011) and is not after correction.
+
+p On SCUT-FBP5500 the answer is different. Across four subgroups the reported disparity is 0.130 against a floor of 0.036, which is 28% of it (p < 0.001). After both corrections the gap is 0.101 against a floor of 0.034, leaving an excess of 0.067. Across the two ethnicity groups the reported disparity is 0.080 against a floor of 0.014, and the excess after correction is 0.055. A real model-side disparity is present, it is roughly half the size of the number an uncorrected audit would report, and it is in a direction the raw figure also indicates: Caucasian faces, and Caucasian men in particular, are served worse.
+
+@wfig fig3_cascade|7.00|3|The decomposition for three groupings. Each pair of bars gives the disparity as reported and after both label-side corrections, with the sampling-noise floor for that design and skill level shaded. Excess over the floor is the part attributable to the model. On MEBeauty the corrected gap falls below its own floor; on SCUT-FBP5500 a substantial excess survives. The p-values test the reported gap against the floor.
+
+p It is worth stating what has just happened. Two datasets, the same metric, the same pipeline, reported gaps of the same order, and opposite verdicts. An auditor who reported only the first number in each row of Fig. 3 would conclude that both systems are biased and that the MEBeauty one is worse. The opposite is closer to the truth.
+
+#2 The surviving disparity is training representation
+
+p On SCUT-FBP5500 the worse-served ethnicity is also the one with 36% of the other's representation in training: 1,447 Caucasian faces against 3,982 Asian. Representation imbalance is a model-side mechanism, but a specific and fixable one, and it is worth separating from the conclusion that the model is simply worse on those faces.
+
+p We re-trained with each training fold subsampled to equal numbers of Asian and Caucasian faces, holding the evaluation sets fixed. The result is in Fig. 4. The ethnicity gap falls from 0.080 to 0.026, a reduction of 67%, with the Caucasian group rising from 0.626 to 0.654 and the Asian group falling from 0.706 to 0.680. Pooled correlation falls from 0.688 to 0.675. Two-thirds of the disparity that survived every label-side correction is therefore an artefact of the training mix, removable by a change under the developer's control, at a cost of 0.012 in overall accuracy.
+
+@fig fig4_balance|3.40|4|Per-group accuracy on SCUT-FBP5500 with the training mix as collected and balanced by ethnicity, evaluation sets held fixed. Equalizing representation removes two-thirds of the surviving disparity and costs 0.012 of pooled correlation.
+
+p This is the kind of statement a subgroup audit should be able to produce, and it is only available after the first two sources are removed. Run on MEBeauty, the same intervention would have been chasing sampling noise.
+
+#2 Different parity channels give different verdicts
+
+p The results above use correlation. Audits in practice report several parity criteria, and they do not agree. Table IV reports, for the three predictor families, the spread across the twelve intersectional cells in mean prediction and in mean absolute error. As accuracy rises from the geometry predictor to the fusion predictor, the prediction gap grows from 0.770 to 0.829 while the error gap falls from 0.426 to 0.152. The two channels move in opposite directions over the same models.
+
+@tbl parity
+
+p A report that chose prediction parity would certify the least accurate model as the fairest, and a report that chose error parity would certify the most accurate one. Neither is wrong about its own quantity. The point is that the choice of channel is doing the work, and that a decomposition of the kind set out here is needed for each channel separately rather than once for the system. We note also that the label gap across the same cells is 0.926, which is larger than any model's prediction gap: the annotators themselves rate the cells differently, and no model trained to reproduce those labels will show prediction parity.
+
+#2 Interpretable geometry transfers where appearance does not
+
+p One result from the predictor comparison bears directly on auditing. Fig. 5 reports leave-one-population-out transfer on MEBeauty, in which the model is trained on five populations and evaluated on the sixth. The geometric battery has a spread across held-out populations of 0.188 with a standard deviation of 0.071, and its worst case is 11.2% below its in-distribution accuracy. The appearance embedding has a spread of 0.423, a standard deviation of 0.158, and a worst-case degradation of 51.4%. Pairwise, the geometry predictor is significantly better on the held-out Black subset (+0.199, p = 0.016) and significantly worse on the held-out Indian subset (−0.215, p = 0.025); the other four differences are not significant.
+
+@fig fig5_loeo|3.40|5|Leave-one-population-out transfer on MEBeauty. The geometric battery degrades least on populations absent from training; the appearance embedding degrades most, and by a factor of 4.6 in the worst case.
+
+p The comparison is not capacity-matched, and our attempt to match it was inconclusive: a 35-component PCA projection of the embedding has a wider transfer spread than the full embedding (0.436) but is far weaker in distribution (0.299 against 0.704), so the comparison confounds capacity with representation. We report the transfer result as an observation about these two representations as they are used, not as a controlled claim about interpretability in general. On the same quality-controlled split, re-implementations of three classical geometric methods reach 0.409 [eisenthal2006], 0.424 [kagian2006] and 0.374 [fan2018]; the present battery reaches 0.624, a 47% relative improvement over the strongest of them.
+
+#1 Implications for Auditing Practice
+
+#2 Report the floor with the gap
+
+p The minimum change is that a subgroup accuracy report should carry, alongside each gap, the gap that the same evaluation design would produce under equal treatment. It costs a simulation that takes seconds, requires nothing an auditor does not already have, and converts an uninterpretable number into a test. Where cell sizes are small, as they are in most intersectional audits, the floor will frequently be a large fraction of the reported gap, and saying so is not a defence of the system; it is a statement about the evidence.
+
+#2 Publish the annotation parameters
+
+p Per-group label reliability and label spread should be published with any dataset whose labels are human aggregates, and quoted in any audit that uses them. Both are computable from the individual ratings, which datasets increasingly release and both of ours do. Without them, an auditor cannot tell a model that serves a group worse from a label set that measures that group worse, and these have different owners and different fixes.
+
+#2 State what the audit could have detected
+
+p An audit that reports no disparity is making a claim only if it can say what size of disparity it would have found. On the MEBeauty design, a true gap smaller than roughly the floor is undetectable with this evaluation set, and no amount of care in the modelling changes that. Reporting a minimum detectable effect alongside a null result is standard in clinical evidence and is absent from algorithmic auditing.
+
+#2 Correction is diagnosis, not remedy
+
+p The most important caveat is this. Removing the label-side contribution from a measured gap changes what we conclude about the model. It does not change what the system does to the people it serves worse. If a deployed system’s scores correlate less well with the preferences of one group because that group’s labels are noisier, the people in that group still receive worse predictions, and the harm is identical in magnitude to the harm from a model-side defect of the same size.
+
+p The two questions are different and both are legitimate. *Who is being served worse* is answered by the uncorrected per-group accuracy, and that is the right statistic for anyone deciding whether to deploy a system or whether they are at risk from it. *What should be fixed, and by whom* is answered by the decomposition, and that is the right statistic for the developer, the dataset owner and the assessor. Conflating them is how a correct correction becomes an excuse. We therefore recommend that both be reported, with the decomposition presented as an attribution of a disparity rather than as a reduction of it.
+
+p This has a direct consequence for the design of conformity assessment. A regime that accepts a provider’s corrected gap as evidence of compliance creates an incentive to find corrections. A regime that requires the raw gap, the floor, the annotation parameters, and the residual together creates an incentive to fix whichever component is largest, which in our SCUT-FBP5500 case would be the training mix and in our MEBeauty case would be the evaluation set.
+
+#2 The dataset implication
+
+p If per-group reliability drives the apparent disparity, then annotation budget is a fairness instrument. Allocating more raters per item to small groups raises their reliability and narrows the apparent gap by removing an artefact, at no cost in model development. The current convention of a fixed number of raters per item spends the budget where it matters least. SCUT-FBP5500’s uniform 60-rater design is, from this perspective, the better practice, and its cost is why so few datasets adopt it.
+
+#1 Limitations and Ethics
+
+p *The construct.* Facial aesthetic prediction models a rater pool’s aggregate preference. It does not measure a property of a person, and nothing in this paper should be read as endorsing deployment in any setting where people are ranked, selected or scored by appearance. We use the task because it makes annotation quality measurable, and because audits of such systems are already being published and acted on. The ethical risk of this class of system is real and is not addressed by making its audits more accurate.
+
+p *Whose preferences.* Both datasets’ labels come from annotator pools that are not demographically representative of the people being rated, and SCUT-FBP5500’s 60 raters are predominantly from one region. A model that reproduces those labels reproduces that pool's preferences, and a subgroup audit that uses those labels as the criterion measures agreement with that pool rather than anything more general. Our corrections make the criterion measured more precisely; they do not make it a better criterion.
+
+p *Group labels.* Both datasets use coarse, externally assigned population categories and binary sex. These categories are the ones the audit literature uses and the ones the data provides, but they are social constructs applied without the subject’s participation, and conclusions drawn for a category should not be read as conclusions about any individual in it.
+
+p *Assumptions of the corrections.* Attenuation correction assumes classical measurement error with uncorrelated errors; Thorndike case II assumes selection on the criterion, linearity, and homoscedasticity. Both assumptions are approximations here, and both corrections are known to overcorrect where the error structure departs from them. We report every gap before and after each correction separately so that a reader who rejects one can still read the other.
+
+p *Scope.* The floor estimator assumes groups of independent items and would need modification where items are correlated. Results are for one metric family on two datasets with one predictor family per representation; the decomposition is general but the magnitudes are not.
+
+p *Exclusions.* The MEBeauty Indian male cell is reduced to five faces by embedding availability and is excluded from gap statistics, as reported in Section IV-D. The conclusion that nothing survives on MEBeauty is therefore a conclusion about five populations plus a predominantly female Indian subset.
+
+p *Data and ethics.* Both datasets are public and were obtained under their published terms; SCUT-FBP5500 is used subject to the conditions set by its authors [liang2018]. No new human-subject data was collected. ETHICSPLACEHOLDER
+
+#1 Conclusion
+
+p A subgroup accuracy gap is a measurement, and like any measurement it has a noise floor and a calibration. We have shown that for a common class of audit the floor can be half the reported value, that per-group annotation quality can account for most of the rest, and that two datasets producing superficially similar numbers can warrant opposite conclusions. On one of them the entire reported disparity is accounted for by the evaluation design and the labels; on the other a disparity survives, and is traceable to a training imbalance that can be fixed at small cost.
+
+p None of the machinery is new. Correction for attenuation is from 1904 and the range-restriction correction from 1949, and both are routine in fields that have spent a century measuring people with imperfect instruments. What is new is the observation that algorithmic auditing, which measures models with instruments made of human judgement, has adopted the reporting conventions of the former without the error analysis of the latter. Subgroup audits are too consequential to be reported as point estimates of unknown precision. The fix is cheap, and we have set out what it requires.
+
+#1 Acknowledgements
+
+p The authors thank the maintainers of MEBeauty and SCUT-FBP5500 for releasing individual annotator ratings, without which none of the label-side analysis in this paper would be possible.
